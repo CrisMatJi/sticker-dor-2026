@@ -1,4 +1,4 @@
-<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"></head><body>
+<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta property="og:title" content="Sticker d'Or Tournament 2026"><meta property="og:description" content="El bracket del torneo de stickers"><script src="config.js"></script></head><body>
 <title>Sticker d'Or Tournament 2026</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anton&family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&display=swap">
@@ -13,6 +13,7 @@
   color-scheme:dark;
 }
 [hidden]{display:none!important}
+*,*::before,*::after{box-sizing:border-box}
 html,body{background:var(--bg);color:var(--fg)}
 body{font-family:var(--f-body);padding:0 16px;padding-block:16px 40px}
 button{font:inherit;color:inherit;cursor:pointer}
@@ -95,6 +96,13 @@ input.sc{width:5rem;font-family:var(--f-display);font-size:1.3rem;text-align:cen
 .sec h4{margin:0 0 6px;font-family:var(--f-label);text-transform:uppercase;letter-spacing:.08em;font-size:.85rem;color:var(--gold)}
 .confirm{background:rgba(232,112,90,.1);border:1px solid var(--danger);border-radius:8px;padding:10px;margin-top:10px;display:flex;flex-wrap:wrap;gap:8px;align-items:center}
 .toast{position:fixed;left:50%;bottom:calc(18px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--gold);color:#1a1405;font-family:var(--f-label);font-weight:700;letter-spacing:.04em;padding:.5rem .9rem;border-radius:6px;z-index:30;text-transform:uppercase;font-size:.9rem}
+.share-opt{border:1px solid #2f2d29;border-radius:10px;padding:12px;margin-top:10px;background:var(--bg)}
+.share-opt h4{margin:0;font-family:var(--f-display);font-weight:400;font-size:1.25rem;letter-spacing:.02em}
+.share-opt .sub2{margin:.2rem 0 .6rem;color:var(--muted);font-size:.88rem}
+a.btn{text-decoration:none;color:var(--fg);display:inline-flex;align-items:center}
+.shot{display:block;width:100%;border-radius:6px;border:1px solid var(--line);margin:4px 0 10px}
+.cap-title{font-family:var(--f-display);font-size:2.6rem;padding:18px 24px 0;color:var(--fg);letter-spacing:.02em;min-width:1440px}
+.cap-title span{color:var(--gold)}
 .mgr-item{display:grid;grid-template-columns:52px 1fr auto;gap:10px;align-items:center;padding:6px 0;border-bottom:1px solid #2a2925}
 .mgr-item img{width:52px;height:52px;object-fit:cover;border-radius:5px}
 @media (prefers-reduced-motion:no-preference){.slot,.pick{transition:background .12s,border-color .12s}}
@@ -108,8 +116,7 @@ input.sc{width:5rem;font-family:var(--f-display);font-size:1.3rem;text-align:cen
   <div class="tools">
     <span class="status" id="status">Conectando…</span>
     <button class="btn" id="btnStickers">Stickers</button>
-    <button class="btn" id="btnExport" hidden>Exportar</button>
-    <label class="btn" id="btnImport" for="impIn" hidden style="cursor:pointer">Importar</label><input id="impIn" type="file" accept="application/json,.json" hidden>
+    <button class="btn gold" id="btnShare">Compartir</button>
     <button class="btn danger" id="btnReset">Reiniciar</button>
   </div>
 </header>
@@ -119,8 +126,8 @@ input.sc{width:5rem;font-family:var(--f-display);font-size:1.3rem;text-align:cen
   <button class="btn" id="resetNo">Cancelar</button>
 </div>
 
-<div class="scroller"><div class="bracket" id="bracket"></div></div>
-<p class="hint" id="hint">Desliza el cuadro hacia los lados en el móvil.</p>
+<div class="scroller" id="cap"><div class="cap-title" hidden><span>Sticker d'Or</span> Tournament 2026</div><div class="bracket" id="bracket"></div></div>
+<p class="hint">Desliza el cuadro hacia los lados en el móvil. Cualquier cambio se guarda al momento y lo ve todo el que abra la web.</p>
 
 <div id="veil" class="veil" hidden><div class="sheet" id="sheet" role="dialog" aria-modal="true"></div></div>
 <div id="toast" class="toast" hidden></div>
@@ -162,33 +169,31 @@ function slot(r,i){return state.slots?.[r+"-"+i]||{s:null,sc:""}}
 function toast(msg){const t=$("#toast");t.textContent=msg;t.hidden=false;clearTimeout(toast._t);toast._t=setTimeout(()=>t.hidden=true,1800)}
 function numScore(x){const n=parseFloat(String(x).replace(",","."));return isNaN(n)?null:n}
 
-/* ---------- persistence ---------- */
+/* ---------- persistence (Firebase Realtime Database, REST + streaming) ---------- */
+const DB_URL = (window.STICKER_DB_URL || "").replace(/\/+$/,"");
+const hasDB = /^https:\/\/.+\.(firebaseio\.com|firebasedatabase\.app)$/.test(DB_URL);
 function saveLocal(){try{localStorage.setItem("stickerdor",JSON.stringify({state,custom}))}catch(e){}}
+async function rest(path,method,body){
+  const r=await fetch(DB_URL+"/"+path+".json",{method,headers:{"Content-Type":"application/json"},body:body===undefined?undefined:JSON.stringify(body)});
+  if(!r.ok) throw new Error("HTTP "+r.status);
+  return r.json();
+}
 let writeChain=Promise.resolve();
+function queue(fn){ writeChain=writeChain.then(fn).catch(e=>{console.error(e);toast("No se pudo guardar. Revisa la conexión");}); }
 function patch(obj){
-  // obj: partial {slots:{k:v}, names:{id:n}}
   for(const k of Object.keys(obj)){ if(typeof obj[k]==="object"&&obj[k]&&!Array.isArray(obj[k])) state[k]={...(state[k]||{}),...obj[k]}; else state[k]=obj[k]; }
   render();
-  if(mode==="shared"){
-    writeChain=writeChain.then(async()=>{
-      try{ const snap=await mainRef.get(); if(snap.exists) await mainRef.update(obj); else await mainRef.set({...state}); }
-      catch(e){ handleWriteErr(e) }
-    });
-  } else saveLocal();
+  if(hasDB){ for(const k of Object.keys(obj)){ const v=obj[k]; queue(()=>rest("bracket/"+k, (v&&typeof v==="object")?"PATCH":"PUT", v)); } }
+  else saveLocal();
 }
-function handleWriteErr(e){
-  if(e&&e.code==="invalid_argument"){canWrite=false;setStatus();toast("No tienes permiso para editar");}
-  else if(e&&e.code==="quota_exceeded") toast("Sin espacio: borra algún sticker subido");
-  else toast("No se pudo guardar, prueba otra vez");
-}
+function putSticker(id,data){ if(hasDB) return rest("stickers/"+id,"PUT",data); saveLocal(); return Promise.resolve(); }
+function delSticker(id){ if(hasDB) queue(()=>rest("stickers/"+id,"DELETE")); else saveLocal(); }
 function setStatus(){
   const el=$("#status");
-  if(mode==="shared"){el.className="status";el.innerHTML=canWrite?"<b>●</b> Compartido en vivo":"Solo lectura";}
-  else if(mode==="local"){el.className="status local";el.innerHTML="<b>●</b> Modo local (solo en este navegador)";}
+  if(mode==="cloud"){el.className="status";el.innerHTML="<b>●</b> Guardado en la nube";}
+  else if(mode==="offline"){el.className="status local";el.innerHTML="<b>●</b> Reconectando…";}
+  else if(mode==="local"){el.className="status local";el.innerHTML="<b>●</b> Sin base de datos conectada";}
   else el.textContent="Conectando…";
-  $("#btnReset").hidden=!canWrite;
-  $("#btnExport").hidden=$("#btnImport").hidden=mode!=="local";
-  $("#hint").textContent="Desliza el cuadro hacia los lados en el móvil. "+(mode==="shared"?"Los cambios se guardan y los ve todo el que abra este enlace.":mode==="local"?"Los cambios se guardan en este navegador. Usa Exportar para pasar el bracket a otra persona y Importar para cargarlo.":"");
 }
 
 /* ---------- render ---------- */
@@ -264,6 +269,7 @@ $("#sheet").addEventListener("click",e=>{
   if(cur&&act==="clear"){ const {r,i}=cur; patch({slots:{[r+"-"+i]:{s:null,sc:""}}}); return;}
   if(cur&&act==="adv"){ commitInputs(); const {r,i}=cur, s=slot(r,i), ni=Math.floor(i/2);
      patch({slots:{[(r+1)+"-"+ni]:{s:s.s,sc:slot(r+1,ni).sc||""}}}); toast(`${stk(s.s).name} pasa a ${ROUNDS[r+1].t}`); closeSheet(); return;}
+  if(act&&act.startsWith("sh-")){shareAction(act,b);return;}
   if(act) mgrAction(act,b);
 });
 $("#bracket").addEventListener("click",e=>{
@@ -295,7 +301,7 @@ function mgrAction(act,b){
     // vacía casillas que lo usaban
     const sl={};for(const[k,v]of Object.entries(state.slots||{}))if(v&&v.s===id)sl[k]={s:null,sc:""};
     if(Object.keys(sl).length) patch({slots:sl});
-    if(mode==="shared") db.collection("stickers").doc(id).delete().catch(handleWriteErr); else saveLocal();
+    delSticker(id);
     render(); toast("Sticker quitado");}
 }
 function shrink(file){return new Promise((res,rej)=>{const fr=new FileReader();fr.onerror=rej;fr.onload=()=>{const im=new Image();im.onerror=rej;im.onload=()=>{
@@ -307,8 +313,8 @@ async function uploadFiles(files){
       const img=await shrink(f); const name=f.name.replace(/\.[^.]+$/,"").slice(0,40)||"Nuevo sticker";
       const id="c"+Date.now().toString(36)+Math.random().toString(36).slice(2,6);
       custom[id]={name,img,created:Date.now()};
-      if(mode==="shared") await db.collection("stickers").doc(id).set(custom[id]); else saveLocal();
-    }catch(e){ if(e&&e.code) handleWriteErr(e); else toast("Esa imagen no se pudo leer"); }
+      await putSticker(id,custom[id]);
+    }catch(e){ toast(String(e).includes("HTTP")?"No se pudo guardar el sticker":"Esa imagen no se pudo leer"); }
   }
   toast(files.length>1?"Stickers subidos":"Sticker subido"); render(); if(sheetRender===mgrSheet) mgrSheet();
 }
@@ -319,46 +325,98 @@ $("#btnReset").addEventListener("click",()=>$("#resetConfirm").hidden=false);
 $("#resetNo").addEventListener("click",()=>$("#resetConfirm").hidden=true);
 $("#resetYes").addEventListener("click",async()=>{
   $("#resetConfirm").hidden=true; state.slots=seedSlots(); render();
-  if(mode==="shared"){ try{ const snap=await mainRef.get(); const d=snap.exists?snap.data():{}; await mainRef.set({...d,slots:state.slots}); }catch(e){handleWriteErr(e)} } else saveLocal();
+  if(hasDB) queue(()=>rest("bracket/slots","PUT",state.slots)); else saveLocal();
   toast("Bracket reiniciado");
 });
 
-/* ---------- export / import (modo local) ---------- */
-$("#btnExport").addEventListener("click",()=>{
-  const blob=new Blob([JSON.stringify({v:1,state,custom},null,1)],{type:"application/json"});
-  const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="sticker-dor-2026.json";document.body.appendChild(a);a.click();a.remove();
-  setTimeout(()=>URL.revokeObjectURL(a.href),2000);toast("Bracket exportado");
-});
-$("#impIn").addEventListener("change",async e=>{
-  const f=e.target.files[0]; if(!f) return;
-  try{const d=JSON.parse(await f.text()); if(!d.state||!d.state.slots) throw 0; state=d.state; custom=d.custom||{}; saveLocal(); render(); toast("Bracket importado");}
-  catch(_){toast("Ese archivo no es un bracket válido")}
-  e.target.value="";
-});
+/* ---------- compartir ---------- */
+const SHARE_TEXT="🏆 Sticker d'Or Tournament 2026 — así va el bracket";
+const pageURL=()=>location.href.split("#")[0];
+let shot=null; // {blob,url}
+function loadH2C(){ if(window.html2canvas) return Promise.resolve(); return new Promise((res,rej)=>{const s=document.createElement("script");s.src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js";s.onload=res;s.onerror=rej;document.head.appendChild(s)}); }
+async function makeShot(){
+  await loadH2C(); if(document.fonts&&document.fonts.ready) await document.fonts.ready;
+  const el=$("#cap");
+  const canvas=await html2canvas(el,{backgroundColor:getComputedStyle(document.body).backgroundColor,scale:1.5,useCORS:true,windowWidth:Math.max(1600,el.scrollWidth+40),
+    onclone:d=>{d.querySelector(".cap-title").hidden=false;const sc=d.querySelector(".scroller");sc.style.overflow="visible";sc.style.maxWidth="none";}});
+  const blob=await new Promise(r=>canvas.toBlob(r,"image/png"));
+  if(shot) URL.revokeObjectURL(shot.url);
+  shot={blob,url:URL.createObjectURL(blob)};
+}
+const canNative=()=>!!navigator.share;
+function shareSheet(){
+  const u=encodeURIComponent(pageURL()), t=encodeURIComponent(SHARE_TEXT);
+  const fileOK=shot&&navigator.canShare&&navigator.canShare({files:[new File([shot.blob],"sticker-dor-2026.png",{type:"image/png"})]});
+  $("#sheet").innerHTML=`
+   <div class="sheet-head"><div><div class="sub">Sticker d'Or Tournament 2026</div><h3>Compartir</h3></div><button class="x" data-act="close" aria-label="Cerrar">×</button></div>
+   <div class="share-opt">
+     <h4>Enlace a la web</h4>
+     <p class="sub2">Quien lo abra ve el bracket en directo y puede editarlo.</p>
+     <div class="row">
+       ${canNative()?`<button class="btn gold" data-act="sh-link">Compartir enlace</button>`:""}
+       <button class="btn${canNative()?"":" gold"}" data-act="sh-copy">Copiar enlace</button>
+       <a class="btn" href="https://wa.me/?text=${t}%20${u}" target="_blank" rel="noopener">WhatsApp</a>
+       <a class="btn" href="https://t.me/share/url?url=${u}&text=${t}" target="_blank" rel="noopener">Telegram</a>
+       <a class="btn" href="https://twitter.com/intent/tweet?text=${t}&url=${u}" target="_blank" rel="noopener">X</a>
+     </div>
+     <input type="text" id="linkIn" readonly value="${esc(pageURL())}" style="width:100%;margin-top:8px">
+   </div>
+   <div class="share-opt">
+     <h4>Captura del bracket</h4>
+     <p class="sub2">Una imagen del cuadro completo, lista para mandar al grupo.</p>
+     ${shot?`<img class="shot" src="${shot.url}" alt="Captura del bracket">
+       <div class="row">
+         ${fileOK?`<button class="btn gold" data-act="sh-img">Compartir imagen</button>`:""}
+         <button class="btn${fileOK?"":" gold"}" data-act="sh-dl">Descargar</button>
+         ${window.ClipboardItem&&navigator.clipboard&&navigator.clipboard.write?`<button class="btn" data-act="sh-cpimg">Copiar imagen</button>`:""}
+         <button class="btn" data-act="sh-shot">Rehacer</button>
+       </div>`
+     :`<div class="row"><button class="btn gold" data-act="sh-shot" id="shotBtn">Generar captura</button></div>`}
+   </div>`;
+}
+async function shareAction(act,b){
+  try{
+    if(act==="sh-link"){ await navigator.share({title:"Sticker d'Or Tournament 2026",text:SHARE_TEXT,url:pageURL()}); }
+    else if(act==="sh-copy"){ try{await navigator.clipboard.writeText(pageURL());toast("Enlace copiado")}catch(e){const i=$("#linkIn");i.select();toast("Selecciona y copia el enlace")} }
+    else if(act==="sh-shot"){ b.disabled=true;b.textContent="Generando…"; await makeShot(); shareSheet(); }
+    else if(act==="sh-img"){ await navigator.share({files:[new File([shot.blob],"sticker-dor-2026.png",{type:"image/png"})],title:"Sticker d'Or Tournament 2026",text:SHARE_TEXT}); }
+    else if(act==="sh-dl"){ const a=document.createElement("a");a.href=shot.url;a.download="sticker-dor-2026.png";document.body.appendChild(a);a.click();a.remove();toast("Imagen descargada"); }
+    else if(act==="sh-cpimg"){ await navigator.clipboard.write([new ClipboardItem({"image/png":shot.blob})]); toast("Imagen copiada"); }
+  }catch(e){ if(e&&e.name==="AbortError") return; console.error(e); toast(act==="sh-shot"?"No se pudo generar la captura":"No se pudo compartir"); shareSheet(); }
+}
+$("#btnShare").addEventListener("click",()=>{cur=null;openSheet(shareSheet)});
 
 /* ---------- boot ---------- */
 state.slots=seedSlots(); render(); setStatus();
-function startLocal(){
+let tree={}, firstSync=true;
+function setAt(path,val){
+  const parts=path.split("/").filter(Boolean);
+  if(!parts.length){tree=(val&&typeof val==="object")?val:{};return;}
+  let o=tree; for(let i=0;i<parts.length-1;i++){ if(!o[parts[i]]||typeof o[parts[i]]!=="object") o[parts[i]]={}; o=o[parts[i]]; }
+  if(val===null) delete o[parts[parts.length-1]]; else o[parts[parts.length-1]]=val;
+}
+function fromTree(){
+  if(firstSync){ firstSync=false;
+    if(!tree.bracket||!tree.bracket.slots){ queue(()=>rest("bracket","PATCH",{slots:seedSlots()})); return; } }
+  const b=tree.bracket||{};
+  state={slots:{...(b.slots||{})},names:{...(b.names||{})}};
+  const c={}; for(const[id,v] of Object.entries(tree.stickers||{})) if(v&&v.img) c[id]=v; custom=c;
+  render();
+}
+function connect(){
+  const es=new EventSource(DB_URL+"/.json");
+  es.onopen=()=>{mode="cloud";setStatus();};
+  es.addEventListener("put",e=>{const d=JSON.parse(e.data);setAt(d.path,d.data);mode="cloud";setStatus();fromTree();});
+  es.addEventListener("patch",e=>{const d=JSON.parse(e.data);for(const[k,v] of Object.entries(d.data||{}))setAt(d.path+"/"+k,v);fromTree();});
+  es.addEventListener("cancel",()=>{mode="offline";setStatus();toast("La base de datos rechazó la lectura: revisa sus reglas");});
+  es.onerror=()=>{ if(mode!=="loading"){mode="offline";setStatus();} };
+}
+if(hasDB){ connect(); }
+else{
   mode="local";
   try{const raw=localStorage.getItem("stickerdor"); if(raw){const d=JSON.parse(raw); if(d.state) state=d.state; if(d.custom) custom=d.custom;}}catch(e){}
   render(); setStatus();
 }
-(async()=>{
-  if(!window.claude||!window.claude.use){startLocal();return;}
-  try{ db=await window.claude.use("db"); }catch(e){db=null}
-  if(!db){startLocal();return;}
-  mode="shared";
-  try{ const user=await window.claude.use("user"); const c=user?await user.can("data.write"):null; if(c===false) canWrite=false; }catch(e){}
-  setStatus();
-  mainRef=db.doc("bracket/main");
-  mainRef.onSnapshot(snap=>{
-    if(snap.exists){const d=snap.data(); state={slots:{...(d.slots||{})},names:{...(d.names||{})},title:d.title||"Sticker d'Or"};}
-    render();
-  },()=>{});
-  db.collection("stickers").onSnapshot(qs=>{
-    const n={}; qs.docs.forEach(d=>{const v=d.data(); if(v&&v.img) n[d.id]={name:v.name,img:v.img,created:v.created}}); custom=n; render();
-  },()=>{});
-})();
 </script>
 
 </body></html>
