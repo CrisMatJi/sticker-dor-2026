@@ -1,4 +1,4 @@
-<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta property="og:title" content="Sticker d'Or Tournament 2026"><meta property="og:description" content="El bracket del torneo de stickers"><script src="config.js"></script></head><body>
+<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#111110"><meta property="og:title" content="Sticker d'Or Tournament 2026"><meta property="og:description" content="El bracket del torneo de stickers"><script src="config.js"></script></head><body>
 <title>Sticker d'Or Tournament 2026</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anton&family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&display=swap">
@@ -67,6 +67,39 @@ header.top{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:spac
 .champ .cn{font-family:var(--f-display);font-size:1.25rem;color:var(--fg)}
 .champ .cph{color:var(--muted);font-size:.85rem;padding:30px 0}
 
+/* ---- móvil: ronda a ronda ---- */
+.mobile{display:none}
+@media (max-width:900px){
+  body{padding-block:12px 32px}
+  header.top{align-items:flex-start;margin-bottom:12px}
+  .brand p{font-size:.85rem}
+  .tools{width:100%}
+  .tools .status{width:100%;order:-1}
+  .tools .btn{flex:1;text-align:center;padding:.6rem .5rem}
+  .scroller,.hint{display:none}
+  .mobile{display:block}
+}
+.m-champ{display:flex;align-items:center;gap:12px;border:1.5px solid var(--gold);border-radius:12px;padding:10px;margin-bottom:12px;background:radial-gradient(ellipse at left,var(--gold-soft),transparent 70%);width:100%;text-align:left}
+.m-champ img{width:64px;height:64px;border-radius:8px;object-fit:cover}
+.m-champ .lbl{font-family:var(--f-label);font-weight:700;letter-spacing:.16em;text-transform:uppercase;font-size:.75rem;color:var(--gold)}
+.m-champ .cn{font-family:var(--f-display);font-size:1.4rem;line-height:1.05;color:var(--fg)}
+.tabs{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--bg);display:flex;gap:6px;overflow-x:auto;padding:6px 0 10px;scrollbar-width:none}
+.tabs::-webkit-scrollbar{display:none}
+.tab{flex:1 0 auto;background:var(--slot);border:1px solid var(--line);border-radius:999px;padding:.45rem .85rem;font-family:var(--f-label);font-weight:600;text-transform:uppercase;letter-spacing:.05em;font-size:.88rem;display:flex;gap:6px;align-items:center;justify-content:center}
+.tab small{font-family:var(--f-body);font-size:.72rem;color:var(--muted);font-weight:500}
+.tab[aria-selected="true"]{background:var(--gold);color:#1a1405;border-color:var(--gold)}
+.tab[aria-selected="true"] small{color:#3d2f0c}
+.m-side{font-family:var(--f-display);font-weight:400;font-size:1.1rem;letter-spacing:.04em;color:var(--muted);margin:14px 0 8px}
+.m-side:first-child{margin-top:4px}
+.m-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,300px),1fr));gap:10px}
+.m-match{background:var(--panel);border:1px solid #2a2925;border-radius:10px;padding:6px;display:flex;flex-direction:column;gap:4px}
+.m-match .vs{font-family:var(--f-label);font-size:.7rem;letter-spacing:.14em;color:var(--muted);text-align:center;line-height:1}
+.mobile .slot{grid-template-columns:52px 1fr 44px;min-height:62px;gap:10px;padding:5px}
+.mobile .thumb{width:52px;height:52px}
+.mobile .nm{font-size:1rem;-webkit-line-clamp:2}
+.mobile .score{font-size:1.4rem;min-height:52px}
+.m-final .m-match{border-color:var(--gold)}
+.m-empty{color:var(--muted);font-size:.9rem;padding:8px 2px}
 .hint{max-width:1500px;margin:10px auto 0;color:var(--muted);font-size:.85rem}
 
 /* sheet */
@@ -126,6 +159,7 @@ a.btn{text-decoration:none;color:var(--fg);display:inline-flex;align-items:cente
   <button class="btn" id="resetNo">Cancelar</button>
 </div>
 
+<div class="mobile" id="mobile"></div>
 <div class="scroller" id="cap"><div class="cap-title" hidden><span>Sticker d'Or</span> Tournament 2026</div><div class="bracket" id="bracket"></div></div>
 <p class="hint">Desliza el cuadro hacia los lados en el móvil. Cualquier cambio se guarda al momento y lo ve todo el que abra la web.</p>
 
@@ -218,6 +252,7 @@ function render(){
       <button class="${ch?"has":""}" data-r="5" data-i="0" aria-label="Campeón">${ch?`<img src="${ch.img}" alt=""><span class="cn">${esc(ch.name)}</span>`:`<span class="cph">El campeón aparecerá aquí</span>`}</button></div>
   </div>`;
   $("#bracket").innerHTML=colHTML(0,"l")+colHTML(1,"l")+colHTML(2,"l")+colHTML(3,"l")+center+colHTML(3,"r")+colHTML(2,"r")+colHTML(1,"r")+colHTML(0,"r");
+  if(typeof renderMobile==="function") renderMobile();
   if(!$("#veil").hidden && sheetRender) sheetRender();
 }
 
@@ -273,6 +308,38 @@ $("#sheet").addEventListener("click",e=>{
   if(act) mgrAction(act,b);
 });
 $("#bracket").addEventListener("click",e=>{
+  const b=e.target.closest("[data-r]"); if(!b) return;
+  cur={r:+b.dataset.r,i:+b.dataset.i}; query=""; openSheet(slotSheet);
+});
+
+/* ---------- vista móvil ---------- */
+let mRound=null;
+try{const v=localStorage.getItem("stickerdor-round");if(v!==null)mRound=+v}catch(e){}
+function filled(r){let n=0;for(let i=0;i<ROUNDS[r].n;i++)if(slot(r,i).s)n++;return n}
+function defaultRound(){let best=0;for(let r=0;r<5;r++)if(filled(r))best=r;
+  // si la ronda más avanzada aún está casi vacía, enseña la anterior donde se está votando
+  if(best>0&&filled(best)<ROUNDS[best].n/2&&best<4)best=best-1;return best}
+function mMatch(r,k){return `<div class="m-match">${slotHTML(r,k)}<span class="vs">VS</span>${slotHTML(r,k+1)}</div>`}
+function renderMobile(){
+  const r=mRound===null?defaultRound():mRound;
+  const ch=stk(slot(5,0).s);
+  const tabs=[0,1,2,3,4].map(x=>`<button class="tab" role="tab" data-tab="${x}" aria-selected="${x===r}">${x===3?"Semis":ROUNDS[x].t}<small>${filled(x)}/${ROUNDS[x].n}</small></button>`).join("");
+  let body="";
+  if(r<4){
+    const n=ROUNDS[r].n, half=n/2, side=(a,b)=>{let h="";for(let k=a;k<b;k+=2)h+=mMatch(r,k);return h};
+    body=`<h3 class="m-side">LADO A</h3><div class="m-list">${side(0,half)}</div><h3 class="m-side">LADO B</h3><div class="m-list">${side(half,n)}</div>`;
+  } else {
+    body=`<div class="m-final"><h3 class="m-side">FINAL 2026</h3><div class="m-list">${mMatch(4,0)}</div></div>`;
+  }
+  $("#mobile").innerHTML=`
+    <button class="m-champ" data-r="5" data-i="0">${ch?`<img src="${ch.img}" alt="">`:`<span class="thumb empty" style="width:64px;height:64px"></span>`}
+      <span><span class="lbl">Sticker d'Or 2026</span><br><span class="cn">${ch?esc(ch.name):"Campeón por decidir"}</span></span></button>
+    <div class="tabs" role="tablist">${tabs}</div>${body}`;
+  const sel=$("#mobile .tab[aria-selected=true]"); if(sel&&sel.scrollIntoView&&!renderMobile._done){renderMobile._done=true;sel.scrollIntoView({inline:"center",block:"nearest"});}
+}
+$("#mobile").addEventListener("click",e=>{
+  const t=e.target.closest("[data-tab]");
+  if(t){mRound=+t.dataset.tab;try{localStorage.setItem("stickerdor-round",mRound)}catch(_){ }renderMobile();return;}
   const b=e.target.closest("[data-r]"); if(!b) return;
   cur={r:+b.dataset.r,i:+b.dataset.i}; query=""; openSheet(slotSheet);
 });
